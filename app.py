@@ -24,10 +24,10 @@ def get_stock_price(ticker):
         pass
     return None
 
-# YENİ İŞLEM EKLEME FORM (Tarih - Saat Öncelikli Sıralama & Komisyon Alanı)
+# YENİ İŞLEM EKLEME FORM (Uygulama / Aracı Kurum Eklendi)
 with st.expander("➕ Yeni İşlem Ekle", expanded=True):
     with st.form("new_transaction_form", clear_on_submit=True):
-        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([0.9, 1.3, 1.1, 1.3, 0.9, 1.1, 1.1, 1.1])
+        col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.2, 1.0, 1.2, 1.1, 0.8, 0.9, 1.0, 1.0])
         with col1:
             tx_order = st.number_input("Sıra No", min_value=1, value=len(st.session_state.transactions) + 1, step=1)
         with col2:
@@ -35,14 +35,16 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
         with col3:
             tx_time = st.time_input("Saat", value=datetime.datetime.now().time())
         with col4:
-            ticker = st.text_input("Hisse Kodu", placeholder="THYAO")
+            app_platform = st.text_input("Uygulama / Banka", placeholder="Midas, İş Cep vb.")
         with col5:
-            action = st.selectbox("İşlem", ["AL", "SAT"])
+            ticker = st.text_input("Hisse Kodu", placeholder="THYAO")
         with col6:
-            quantity = st.number_input("Adet", min_value=1, value=100)
+            action = st.selectbox("İşlem", ["AL", "SAT"])
         with col7:
-            price = st.number_input("Fiyat (TL)", min_value=0.01, value=10.0, step=0.1)
+            quantity = st.number_input("Adet", min_value=1, value=100)
         with col8:
+            price = st.number_input("Fiyat (TL)", min_value=0.01, value=10.0, step=0.1)
+        with col9:
             commission = st.number_input("Komisyon (TL)", min_value=0.0, value=0.0, step=0.1)
 
         submit_btn = st.form_submit_button("İşlemi Kaydet", type="primary")
@@ -56,6 +58,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     "Tarih": tx_date.strftime("%d/%m/%Y"),
                     "Saat": tx_time.strftime("%H:%M"),
                     "Sıra": tx_order,
+                    "Uygulama": app_platform.strip() if app_platform else "-",
                     "Hisse": clean_ticker,
                     "İşlem": action,
                     "Adet": quantity,
@@ -71,7 +74,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                         x.get("Sıra", 0)
                     )
                 )
-                st.success(f"{clean_ticker} işlemi başarıyla eklendi ve tarih/saat sırasına göre dizildi!")
+                st.success(f"{clean_ticker} işlemi başarıyla eklendi!")
                 st.rerun()
             else:
                 st.warning("Lütfen hisse kodunu girin.")
@@ -83,33 +86,35 @@ if not st.session_state.transactions:
     st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki formdan ilk işlemini ekleyebilirsin.")
 else:
     # Başlık Satırı
-    h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns([0.7, 1.1, 0.9, 1.1, 0.8, 0.9, 1.0, 1.0, 1.1, 0.5])
+    h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
     h1.markdown("**Sıra**")
     h2.markdown("**Tarih**")
     h3.markdown("**Saat**")
-    h4.markdown("**Hisse**")
-    h5.markdown("**İşlem**")
-    h6.markdown("**Adet**")
-    h7.markdown("**Fiyat**")
-    h8.markdown("**Komisyon**")
-    h9.markdown("**Tutar**")
-    h10.markdown("**Sil**")
+    h4.markdown("**Uygulama**")
+    h5.markdown("**Hisse**")
+    h6.markdown("**İşlem**")
+    h7.markdown("**Adet**")
+    h8.markdown("**Fiyat**")
+    h9.markdown("**Komisyon**")
+    h10.markdown("**Tutar**")
+    h11.markdown("**Sil**")
     st.divider()
 
     # İşlem Satırları ve Çöp Kutusu
     to_delete = None
     for idx, t in enumerate(st.session_state.transactions):
-        c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([0.7, 1.1, 0.9, 1.1, 0.8, 0.9, 1.0, 1.0, 1.1, 0.5])
+        c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
         c1.write(f"#{t.get('Sıra', idx+1)}")
         c2.write(t.get("Tarih", ""))
         c3.write(t.get("Saat", "--:--"))
-        c4.write(f"**{t['Hisse']}**")
-        c5.write(f"🟢 AL" if t['İşlem'] == "AL" else f"🔴 SAT")
-        c6.write(f"{t['Adet']:,}")
-        c7.write(f"{t['Fiyat']:.2f} TL")
-        c8.write(f"{t.get('Komisyon', 0.0):.2f} TL")
-        c9.write(f"{t['Tutar']:.2f} TL")
-        if c10.button("🗑️", key=f"del_{idx}"):
+        c4.write(t.get("Uygulama", "-"))
+        c5.write(f"**{t['Hisse']}**")
+        c6.write(f"🟢 AL" if t['İşlem'] == "AL" else f"🔴 SAT")
+        c7.write(f"{t['Adet']:,}")
+        c8.write(f"{t['Fiyat']:.2f} TL")
+        c9.write(f"{t.get('Komisyon', 0.0):.2f} TL")
+        c10.write(f"{t['Tutar']:.2f} TL")
+        if c11.button("🗑️", key=f"del_{idx}"):
             to_delete = idx
 
     if to_delete is not None:
