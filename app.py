@@ -24,7 +24,7 @@ def get_stock_price(ticker):
         pass
     return None
 
-# YENİ İŞLEM EKLEME FORM (Uygulama / Aracı Kurum Eklendi)
+# YENİ İŞLEM EKLEME FORM
 with st.expander("➕ Yeni İşlem Ekle", expanded=True):
     with st.form("new_transaction_form", clear_on_submit=True):
         col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.2, 1.0, 1.2, 1.1, 0.8, 0.9, 1.0, 1.0])
@@ -52,11 +52,14 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
         if submit_btn:
             clean_ticker = ticker.strip().upper()
             if clean_ticker:
+                formatted_date = tx_date.strftime("%d/%m/%Y")
+                formatted_time = tx_time.strftime("%H:%M")
+
                 st.session_state.transactions.append({
                     "Tarih_Obj": tx_date,
                     "Saat_Obj": tx_time,
-                    "Tarih": tx_date.strftime("%d/%m/%Y"),
-                    "Saat": tx_time.strftime("%H:%M"),
+                    "Tarih": formatted_date,
+                    "Saat": formatted_time,
                     "Sıra": tx_order,
                     "Uygulama": app_platform.strip() if app_platform else "-",
                     "Hisse": clean_ticker,
@@ -74,7 +77,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                         x.get("Sıra", 0)
                     )
                 )
-                st.success(f"{clean_ticker} işlemi başarıyla eklendi!")
+                st.success(f"#{tx_order} - {clean_ticker} işlemi ({formatted_date} {formatted_time}) başarıyla eklendi!")
                 st.rerun()
             else:
                 st.warning("Lütfen hisse kodunu girin.")
