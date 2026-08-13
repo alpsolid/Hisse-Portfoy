@@ -33,8 +33,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
         with col2:
             tx_date = st.date_input("İşlem Tarihi", value=datetime.date.today(), format="DD/MM/YYYY")
         with col3:
-            # Metin girdisine çevrildi: Elle 14:00 yazabilirsin, boş bırakırsan o anki saati alır
-            tx_time_str = st.text_input("Saat", placeholder="Örn: 14:00")
+            tx_time_str = st.text_input("Saat", placeholder="1400 veya 14:00")
         with col4:
             app_platform = st.text_input("Uygulama / Banka", placeholder="Midas, İş Cep vb.")
         with col5:
@@ -55,14 +54,24 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
             if clean_ticker:
                 formatted_date = tx_date.strftime("%d/%m/%Y")
 
-                # Saat İşleme ve Formatlama Mantığı
-                user_time = tx_time_str.strip().replace(".", ":")
-                if user_time:
-                    formatted_time = user_time
+                # Akıllı Saat Dönüştürücü (1400 -> 14:00, 930 -> 09:30)
+                raw_time = tx_time_str.strip().replace(".", ":")
+                if raw_time.isdigit():
+                    if len(raw_time) == 4:
+                        raw_time = f"{raw_time[:2]}:{raw_time[2:]}"
+                    elif len(raw_time) == 3:
+                        raw_time = f"0{raw_time[0]}:{raw_time[1:]}"
+                    elif len(raw_time) <= 2:
+                        raw_time = f"{raw_time.zfill(2)}:00"
+
+                if raw_time:
                     try:
-                        time_obj = datetime.datetime.strptime(user_time, "%H:%M").time()
+                        time_obj = datetime.datetime.strptime(raw_time, "%H:%M").time()
+                        formatted_time = time_obj.strftime("%H:%M")
                     except ValueError:
-                        time_obj = datetime.datetime.now().time()
+                        now_dt = datetime.datetime.now()
+                        formatted_time = now_dt.strftime("%H:%M")
+                        time_obj = now_dt.time()
                 else:
                     now_dt = datetime.datetime.now()
                     formatted_time = now_dt.strftime("%H:%M")
