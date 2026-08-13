@@ -24,58 +24,88 @@ def get_stock_price(ticker):
         pass
     return None
 
-# YENİ İŞLEM EKLEME
-with st.expander("➕ Yeni İşlem Ekle", expanded=False):
-    col1, col2, col3, col4, col5 = st.columns(5)
+# YENİ İŞLEM EKLEME FORM
+with st.expander("➕ Yeni İşlem Ekle", expanded=True):
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1.2, 1, 1.5, 1, 1.2, 1.2])
     with col1:
-        tx_date = st.date_input(
-            "İşlem Tarihi", 
-            value=datetime.date.today(), 
-            format="DD/MM/YYYY"
-        )
+        tx_date = st.date_input("İşlem Tarihi", value=datetime.date.today(), format="DD/MM/YYYY")
     with col2:
-        ticker = st.text_input("Hisse Kodu (Örn: THYAO)").upper().strip()
+        tx_time = st.time_input("Saat", value=datetime.datetime.now().time())
     with col3:
-        action = st.selectbox("İşlem Tipi", ["AL", "SAT"])
+        tx_order = st.number_input("Sıra No", min_value=1, value=len(st.session_state.transactions) + 1, step=1)
     with col4:
-        quantity = st.number_input("Adet", min_value=1, value=100)
+        ticker = st.text_input("Hisse Kodu", placeholder="THYAO").upper().strip()
     with col5:
-        price = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=10.0, step=0.1)
+        action = st.selectbox("İşlem", ["AL", "SAT"])
+    with col6:
+        quantity = st.number_input("Adet", min_value=1, value=100)
+    with col7:
+        price = st.number_input("Fiyat (TL)", min_value=0.01, value=10.0, step=0.1)
 
-    if st.button("İşlemi Kaydet"):
+    if st.button("İşlemi Kaydet", type="primary"):
         if ticker:
-            formatted_date = tx_date.strftime("%d/%m/%Y")
             st.session_state.transactions.append({
-                "Tarih": formatted_date,
+                "Tarih_Obj": tx_date,
+                "Saat_Obj": tx_time,
+                "Tarih": tx_date.strftime("%d/%m/%Y"),
+                "Saat": tx_time.strftime("%H:%M"),
+                "Sıra": tx_order,
                 "Hisse": ticker,
                 "İşlem": action,
                 "Adet": quantity,
                 "Fiyat": price,
                 "Tutar": quantity * price
             })
-            st.success(f"{ticker} işlemi başarıyla eklendi!")
+            # Tarih, Saat ve Sıra No'ya göre otomatik kronolojik sıralama
+            st.session_state.transactions.sort(
+                key=lambda x: (
+                    x.get("Tarih_Obj", datetime.date.min),
+                    x.get("Saat_Obj", datetime.time.min),
+                    x.get("Sıra", 0)
+                )
+            )
+            st.success(f"{ticker} işlemi başarıyla eklendi ve sıralandı!")
             st.rerun()
         else:
             st.warning("Lütfen hisse kodunu girin.")
 
-# İŞLEM GEÇMİŞİ VE SİLME
+# İŞLEM GEÇMİŞİ
 st.subheader("📋 İşlem Geçmişi")
+
 if not st.session_state.transactions:
-    st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki 'Yeni İşlem Ekle' butonundan ilk işlemini girebilirsin.")
+    st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki formdan ilk işlemini ekleyebilirsin.")
 else:
-    df_trans = pd.DataFrame(st.session_state.transactions)
-    
-    col_list, col_del = st.columns([3, 1])
-    with col_list:
-        st.dataframe(df_trans, use_container_width=True)
-    with col_del:
-        st.write("**🗑️ Yanlış İşlemi Sil**")
-        options = [f"{i+1}. {t.get('Tarih', '')} - {t['Hisse']} ({t['İşlem']} - {t['Adet']} Adet)" for i, t in enumerate(st.session_state.transactions)]
-        to_delete_idx = st.selectbox("Silinecek İşlemi Seç", range(len(options)), format_func=lambda x: options[x])
-        if st.button("Seçilen İşlemi Sil", type="primary"):
-            st.session_state.transactions.pop(to_delete_idx)
-            st.success("İşlem silindi!")
-            st.rerun()
+    # Başlık Satırı
+    h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns([0.8, 1.2, 1, 1.2, 1, 1, 1.2, 1.2, 0.6])
+    h1.markdown("**Sıra**")
+    h2.markdown("**Tarih**")
+    h3.markdown("**Saat**")
+    h4.markdown("**Hisse**")
+    h5.markdown("**İşlem**")
+    h6.markdown("**Adet**")
+    h7.markdown("**Fiyat**")
+    h8.markdown("**Tutar**")
+    h9.markdown("**Sil**")
+    st.divider()
+
+    # İşlem Satırları ve Çöp Kutusu Butonları
+    to_delete = None
+    for idx, t in enumerate(st.session_state.transactions):
+        c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([0.8, 1.2, 1, 1.2, 1, 1, 1.2, 1.2, 0.6])
+        c1.write(f"#{t.get('Sıra', idx+1)}")
+        c2.write(t.get("Tarih", ""))
+        c3.write(t.get("Saat", "--:--"))
+        c4.write(f"**{t['Hisse']}**")
+        c5.write(f"🟢 AL" if t['İşlem'] == "AL" else f"🔴 SAT")
+        c6.write(f"{t['Adet']:,}")
+        c7.write(f"{t['Fiyat']:.2f} TL")
+        c8.write(f"{t['Tutar']:.2f} TL")
+        if c9.button("🗑️", key=f"del_{idx}"):
+            to_delete = idx
+
+    if to_delete is not None:
+        st.session_state.transactions.pop(to_delete)
+        st.rerun()
 
 # PORTFÖY ÖZETİ VE CANLI VERİ HESAPLAMA
 st.subheader("📊 Portföy Özetiniz (15 Dakika Gecikmeli Canlı Fiyatlar)")
@@ -131,7 +161,6 @@ with st.spinner("BIST güncel fiyatları çekiliyor..."):
 if summary_data:
     st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
     
-    # Özet Göstergeler (Metrics)
     total_pnl = total_portfolio_val - total_portfolio_cost
     total_pnl_pct = (total_pnl / total_portfolio_cost * 100) if total_portfolio_cost > 0 else 0.0
 
