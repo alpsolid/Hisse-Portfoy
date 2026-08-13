@@ -110,7 +110,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
             else:
                 st.warning("Lütfen hisse kodunu girin.")
 
-# PORTFÖY HESAPLAMA MOTORU (Gerçekleşmiş Kâr/Zarar Dâhil)
+# PORTFÖY HESAPLAMA MOTORU
 def calculate_portfolio_data(transactions_list):
     portfolio = {}
     for t in transactions_list:
@@ -154,6 +154,7 @@ def calculate_portfolio_data(transactions_list):
     return portfolio
 
 # SEKMELERİ OLUŞTURMA
+st.divider()
 unique_stocks = list(dict.fromkeys([t["Hisse"] for t in st.session_state.transactions]))
 tab_list = ["🌐 Genel Portföy"] + [f"📌 {symbol}" for symbol in unique_stocks]
 tabs = st.tabs(tab_list)
@@ -240,8 +241,10 @@ with tabs[0]:
                 summary_data.append({
                     "Hisse": symbol,
                     "Adet": data["adet"],
+                    "Ort. Maliyet (Brüt)": f"{avg_cost_brut:.2f} TL",
                     "Ort. Maliyet (Net)": f"{avg_cost_net:.2f} TL",
                     "Güncel Fiyat": price_str,
+                    "Toplam Komisyon": f"{data['komisyon_toplam']:.2f} TL",
                     "Güncel Değer": f"{total_val:.2f} TL",
                     "Satış Kârı (Net)": f"{data['gerceklesen_kar_net']:+.2f} TL",
                     "Açık Poz. Kârı": f"{unrealized_net:+.2f} TL",
@@ -260,7 +263,7 @@ with tabs[0]:
         m2.metric("Açık Poz. Net Maliyet", f"{total_portfolio_net_cost:,.2f} TL")
         m3.metric("Toplam Komisyon", f"{total_portfolio_commission:,.2f} TL")
         m4.metric("Satış Kârı (Realized)", f"{total_realized_pnl_net:,.2f} TL")
-        m5.metric("Net Kâr / Zarar (Toplam)", f"{overall_net_pnl:,.2f} TL", delta=f"{overall_net_pct:+.2f}%")
+        m5.metric("Net Kâr / Zarar (Toplam)", f"{overall_net_pnl:,.2f} TL", delta=f"{overall_net_pct:.2f}%")
 
 # --- HİSSEYE ÖZEL SEKMELER ---
 for i, symbol in enumerate(unique_stocks):
