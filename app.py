@@ -7,9 +7,16 @@ st.set_page_config(page_title="BIST Portföy Takibi", layout="wide")
 
 st.title("📈 BIST Mobil Portföy Takibi")
 
-# İşlem geçmişini hafızada tutma
+# Hafıza Tanımlamaları
 if "transactions" not in st.session_state:
     st.session_state.transactions = []
+
+if "ticker_input" not in st.session_state:
+    st.session_state.ticker_input = ""
+
+# Hisse kodunu girdi kutusunda anlık büyük harfe dönüştüren fonksiyon
+def format_ticker_uppercase():
+    st.session_state.ticker_input = st.session_state.ticker_input.upper()
 
 # Yahoo Finance üzerinden BIST fiyatı çekme fonksiyonu
 @st.cache_data(ttl=300)
@@ -24,17 +31,22 @@ def get_stock_price(ticker):
         pass
     return None
 
-# YENİ İŞLEM EKLEME FORM
+# YENİ İŞLEM EKLEME FORM (Sıralama: 1. Sıra No, 2. Tarih, 3. Saat)
 with st.expander("➕ Yeni İşlem Ekle", expanded=True):
-    col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1.2, 1, 1.5, 1, 1.2, 1.2])
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 1.5, 1.2, 1.5, 1, 1.2, 1.2])
     with col1:
-        tx_date = st.date_input("İşlem Tarihi", value=datetime.date.today(), format="DD/MM/YYYY")
-    with col2:
-        tx_time = st.time_input("Saat", value=datetime.datetime.now().time())
-    with col3:
         tx_order = st.number_input("Sıra No", min_value=1, value=len(st.session_state.transactions) + 1, step=1)
+    with col2:
+        tx_date = st.date_input("İşlem Tarihi", value=datetime.date.today(), format="DD/MM/YYYY")
+    with col3:
+        tx_time = st.time_input("Saat", value=datetime.datetime.now().time())
     with col4:
-        ticker = st.text_input("Hisse Kodu", placeholder="THYAO").upper().strip()
+        ticker = st.text_input(
+            "Hisse Kodu", 
+            key="ticker_input", 
+            on_change=format_ticker_uppercase, 
+            placeholder="THYAO"
+        ).strip()
     with col5:
         action = st.selectbox("İşlem", ["AL", "SAT"])
     with col6:
@@ -50,13 +62,13 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                 "Tarih": tx_date.strftime("%d/%m/%Y"),
                 "Saat": tx_time.strftime("%H:%M"),
                 "Sıra": tx_order,
-                "Hisse": ticker,
+                "Hisse": ticker.upper(),
                 "İşlem": action,
                 "Adet": quantity,
                 "Fiyat": price,
                 "Tutar": quantity * price
             })
-            # Tarih, Saat ve Sıra No'ya göre otomatik kronolojik sıralama
+            # Otomatik kronolojik sıralama
             st.session_state.transactions.sort(
                 key=lambda x: (
                     x.get("Tarih_Obj", datetime.date.min),
@@ -64,7 +76,9 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     x.get("Sıra", 0)
                 )
             )
-            st.success(f"{ticker} işlemi başarıyla eklendi ve sıralandı!")
+            # Kutuyu bir sonraki giriş için temizle
+            st.session_state.ticker_input = ""
+            st.success(f"{ticker.upper()} işlemi başarıyla eklendi ve sıralandı!")
             st.rerun()
         else:
             st.warning("Lütfen hisse kodunu girin.")
@@ -75,7 +89,7 @@ st.subheader("📋 İşlem Geçmişi")
 if not st.session_state.transactions:
     st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki formdan ilk işlemini ekleyebilirsin.")
 else:
-    # Başlık Satırı
+    # Başlık Satırı (1. Sıra No, 2. Tarih, 3. Saat...)
     h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns([0.8, 1.2, 1, 1.2, 1, 1, 1.2, 1.2, 0.6])
     h1.markdown("**Sıra**")
     h2.markdown("**Tarih**")
