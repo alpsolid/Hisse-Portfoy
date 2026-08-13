@@ -11,6 +11,9 @@ st.title("📈 BIST Mobil Portföy Takibi")
 if "transactions" not in st.session_state:
     st.session_state.transactions = []
 
+if "confirm_delete_idx" not in st.session_state:
+    st.session_state.confirm_delete_idx = None
+
 # Yahoo Finance üzerinden BIST fiyatı çekme fonksiyonu
 @st.cache_data(ttl=300)
 def get_stock_price(ticker):
@@ -52,7 +55,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
         if submit_btn:
             clean_ticker = ticker.strip().upper()
             
-            # Virgül - Nokta Dönüştürücü (Nokta hatalarını önler)
+            # Virgül - Nokta Dönüştürücü
             try:
                 price = float(price_str.replace(",", "."))
             except ValueError:
@@ -191,7 +194,6 @@ with tabs[0]:
         h11.markdown("**Sil**")
         st.divider()
 
-        to_delete = None
         for idx, t in enumerate(st.session_state.transactions):
             c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
             c1.write(f"#{idx+1}")
@@ -205,13 +207,23 @@ with tabs[0]:
             c9.write(f"{t.get('Komisyon', 0.0):.2f} TL")
             c10.write(f"{t['Tutar']:.2f} TL")
             if c11.button("🗑️", key=f"del_all_{idx}"):
-                to_delete = idx
+                st.session_state.confirm_delete_idx = idx
+                st.rerun()
 
-        if to_delete is not None:
-            st.session_state.transactions.pop(to_delete)
-            for i, item in enumerate(st.session_state.transactions):
-                item["Sıra"] = i + 1
-            st.rerun()
+            # SILME ONAY KUTUSU (Genel Portföy)
+            if st.session_state.confirm_delete_idx == idx:
+                with st.container():
+                    st.warning(f"⚠️ **Sıra #{idx+1} ({t['Hisse']})** işlemini silmek istediğinizden emin misiniz?")
+                    col_del1, col_del2, _ = st.columns([1, 1, 4])
+                    if col_del1.button("✅ Evet, Sil", key=f"confirm_yes_gen_{idx}", type="primary"):
+                        st.session_state.transactions.pop(idx)
+                        st.session_state.confirm_delete_idx = None
+                        for i, item in enumerate(st.session_state.transactions):
+                            item["Sıra"] = i + 1
+                        st.rerun()
+                    if col_del2.button("❌ İptal", key=f"confirm_no_gen_{idx}"):
+                        st.session_state.confirm_delete_idx = None
+                        st.rerun()
 
     st.subheader("📊 Portföy Özetiniz (15 Dakika Gecikmeli Canlı Fiyatlar)")
     portfolio = calculate_portfolio_data(st.session_state.transactions)
@@ -282,7 +294,6 @@ for i, symbol in enumerate(unique_stocks):
     with tabs[i + 1]:
         st.subheader(f"📌 {symbol} Hisse Detayı ve İşlemleri")
         
-        # O hisseye ait işlemleri bul ve indeksiyle eşleştir
         stock_txs_with_idx = [(idx, t) for idx, t in enumerate(st.session_state.transactions) if t["Hisse"] == symbol]
         stock_txs = [t for idx, t in stock_txs_with_idx]
         stock_portfolio = calculate_portfolio_data(stock_txs).get(symbol, {})
@@ -306,7 +317,6 @@ for i, symbol in enumerate(unique_stocks):
             k2.metric("Güncel Fiyat", f"{curr_price:.2f} TL")
             k3.metric("Satış Kârı (Net)", f"{realized_net:+.2f} TL")
             k4.metric("Açık Pozisyon Kârı", f"{unrealized_net:+.2f} TL")
-            # Hem TL Hem Yüzdesel Renkli Kâr/Zarar
             k5.metric("Toplam Net Kâr / Zarar", f"{total_stock_pnl:+.2f} TL", delta=f"{stock_pnl_pct:+.2f}%")
 
         st.divider()
@@ -325,7 +335,6 @@ for i, symbol in enumerate(unique_stocks):
         h10.markdown("**Sil**")
         st.divider()
 
-        to_delete_stock = None
         for orig_idx, t in stock_txs_with_idx:
             c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([0.6, 1.0, 0.8, 1.1, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
             c1.write(f"#{t.get('Sıra', orig_idx+1)}")
@@ -338,10 +347,20 @@ for i, symbol in enumerate(unique_stocks):
             c8.write(f"{t.get('Komisyon', 0.0):.2f} TL")
             c9.write(f"{t['Tutar']:.2f} TL")
             if c10.button("🗑️", key=f"del_stock_tab_{orig_idx}"):
-                to_delete_stock = orig_idx
+                st.session_state.confirm_delete_idx = orig_idx
+                st.rerun()
 
-        if to_delete_stock is not None:
-            st.session_state.transactions.pop(to_delete_stock)
-            for i, item in enumerate(st.session_state.transactions):
-                item["Sıra"] = i + 1
-            st.rerun()
+            # SILME ONAY KUTUSU (Hisse Özel Sekmesi)
+            if st.session_state.confirm_delete_idx == orig_idx:
+                with st.container():
+                    st.warning(f"⚠️ **Sıra #{orig_idx+1} ({t['Hisse']})** işlemini silmek istediğinizden emin misiniz?")
+                    col_del1, col_del2, _ = st.columns([1, 1, 4])
+                    if col_del1.button("✅ Evet, Sil", key=f"confirm_yes_stk_{orig_idx}", type="primary"):
+                        st.session_state.transactions.pop(orig_idx)
+                        st.session_state.confirm_delete_idx = None
+                        for i, item in enumerate(st.session_state.transactions):
+                            item["Sıra"] = i + 1
+                        st.rerun()
+                    if col_del2.button("❌ İptal", key=f"confirm_no_stk_{orig_idx}"):
+                        st.session_state.confirm_delete_idx = None
+                        st.rerun()
