@@ -27,7 +27,7 @@ def get_stock_price(ticker):
 # YENİ İŞLEM EKLEME FORM (Üst Alanda Sabit)
 with st.expander("➕ Yeni İşlem Ekle", expanded=True):
     with st.form("new_transaction_form", clear_on_submit=True):
-        col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.2, 1.0, 1.2, 1.1, 0.8, 0.9, 1.0, 1.0])
+        col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.2, 1.0, 1.2, 1.1, 0.8, 0.9, 1.1, 1.0])
         with col1:
             tx_order = st.number_input("Sıra No", min_value=1, value=len(st.session_state.transactions) + 1, step=1)
         with col2:
@@ -43,18 +43,30 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
         with col7:
             quantity = st.number_input("Adet", min_value=1, value=100)
         with col8:
-            price = st.number_input("Fiyat (TL)", min_value=0.01, value=10.0, step=0.1)
+            price_str = st.text_input("Birim Fiyat (TL)", value="10.00", help="Örn: 20.26 veya 20,26")
         with col9:
-            commission = st.number_input("Komisyon (TL)", min_value=0.0, value=0.0, step=0.1)
+            commission_str = st.text_input("Komisyon (TL)", value="0.00", help="Örn: 2.00 veya 2,00")
 
         submit_btn = st.form_submit_button("İşlemi Kaydet", type="primary")
 
         if submit_btn:
             clean_ticker = ticker.strip().upper()
-            if clean_ticker:
+            
+            # Virgül - Nokta Dönüştürücü (Nokta hatalarını önler)
+            try:
+                price = float(price_str.replace(",", "."))
+            except ValueError:
+                price = 0.0
+
+            try:
+                commission = float(commission_str.replace(",", "."))
+            except ValueError:
+                commission = 0.0
+
+            if clean_ticker and price > 0:
                 formatted_date = tx_date.strftime("%d/%m/%Y")
 
-                # Akıllı Saat Dönüştürücü (1400 -> 14:00, 930 -> 09:30)
+                # Akıllı Saat Dönüştürücü
                 raw_time = tx_time_str.strip().replace(".", ":")
                 if raw_time.isdigit():
                     if len(raw_time) == 4:
@@ -108,7 +120,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                 st.success(f"{clean_ticker} işlemi ({formatted_date} {formatted_time}) başarıyla eklendi!")
                 st.rerun()
             else:
-                st.warning("Lütfen hisse kodunu girin.")
+                st.warning("Lütfen geçerli bir hisse kodu ve birim fiyat girin.")
 
 # PORTFÖY HESAPLAMA MOTORU
 def calculate_portfolio_data(transactions_list):
@@ -173,7 +185,7 @@ with tabs[0]:
         h5.markdown("**Hisse**")
         h6.markdown("**İşlem**")
         h7.markdown("**Adet**")
-        h8.markdown("**Fiyat**")
+        h8.markdown("**Birim Fiyat**")
         h9.markdown("**Komisyon**")
         h10.markdown("**Tutar**")
         h11.markdown("**Sil**")
@@ -270,14 +282,15 @@ for i, symbol in enumerate(unique_stocks):
     with tabs[i + 1]:
         st.subheader(f"📌 {symbol} Hisse Detayı ve İşlemleri")
         
-        stock_txs = [t for t in st.session_state.transactions if t["Hisse"] == symbol]
+        # O hisseye ait işlemleri bul ve indeksiyle eşleştir
+        stock_txs_with_idx = [(idx, t) for idx, t in enumerate(st.session_state.transactions) if t["Hisse"] == symbol]
+        stock_txs = [t for idx, t in stock_txs_with_idx]
         stock_portfolio = calculate_portfolio_data(stock_txs).get(symbol, {})
 
         if stock_portfolio:
             qty = stock_portfolio["adet"]
             net_cost = stock_portfolio["toplam_maliyet_net"]
             realized_net = stock_portfolio["gerceklesen_kar_net"]
-            comm = stock_portfolio["komisyon_toplam"]
 
             curr_price = get_stock_price(symbol)
             if curr_price is None:
@@ -286,32 +299,36 @@ for i, symbol in enumerate(unique_stocks):
             curr_val = qty * curr_price
             unrealized_net = (curr_val - net_cost) if qty > 0 else 0.0
             total_stock_pnl = unrealized_net + realized_net
+            stock_pnl_pct = (total_stock_pnl / net_cost * 100) if net_cost > 0 else 0.0
 
             k1, k2, k3, k4, k5 = st.columns(5)
             k1.metric("Mevcut Adet", f"{qty:,}")
             k2.metric("Güncel Fiyat", f"{curr_price:.2f} TL")
             k3.metric("Satış Kârı (Net)", f"{realized_net:+.2f} TL")
             k4.metric("Açık Pozisyon Kârı", f"{unrealized_net:+.2f} TL")
-            k5.metric("Toplam Net Kâr / Zarar", f"{total_stock_pnl:+.2f} TL")
+            # Hem TL Hem Yüzdesel Renkli Kâr/Zarar
+            k5.metric("Toplam Net Kâr / Zarar", f"{total_stock_pnl:+.2f} TL", delta=f"{stock_pnl_pct:+.2f}%")
 
         st.divider()
         st.markdown(f"### 📋 {symbol} İşlem Geçmişi")
         
-        h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns([0.8, 1.1, 0.9, 1.2, 0.8, 0.9, 1.0, 1.0, 1.1])
+        h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns([0.6, 1.0, 0.8, 1.1, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
         h1.markdown("**Sıra**")
         h2.markdown("**Tarih**")
         h3.markdown("**Saat**")
         h4.markdown("**Uygulama**")
         h5.markdown("**İşlem**")
         h6.markdown("**Adet**")
-        h7.markdown("**Fiyat**")
+        h7.markdown("**Birim Fiyat**")
         h8.markdown("**Komisyon**")
         h9.markdown("**Tutar**")
+        h10.markdown("**Sil**")
         st.divider()
 
-        for s_idx, t in enumerate(stock_txs):
-            c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([0.8, 1.1, 0.9, 1.2, 0.8, 0.9, 1.0, 1.0, 1.1])
-            c1.write(f"#{t.get('Sıra', s_idx+1)}")
+        to_delete_stock = None
+        for orig_idx, t in stock_txs_with_idx:
+            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10 = st.columns([0.6, 1.0, 0.8, 1.1, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
+            c1.write(f"#{t.get('Sıra', orig_idx+1)}")
             c2.write(t.get("Tarih", ""))
             c3.write(t.get("Saat", "--:--"))
             c4.write(t.get("Uygulama", "-"))
@@ -320,3 +337,11 @@ for i, symbol in enumerate(unique_stocks):
             c7.write(f"{t['Fiyat']:.2f} TL")
             c8.write(f"{t.get('Komisyon', 0.0):.2f} TL")
             c9.write(f"{t['Tutar']:.2f} TL")
+            if c10.button("🗑️", key=f"del_stock_tab_{orig_idx}"):
+                to_delete_stock = orig_idx
+
+        if to_delete_stock is not None:
+            st.session_state.transactions.pop(to_delete_stock)
+            for i, item in enumerate(st.session_state.transactions):
+                item["Sıra"] = i + 1
+            st.rerun()
