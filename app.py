@@ -24,7 +24,7 @@ def get_stock_price(ticker):
         pass
     return None
 
-# YENİ İŞLEM EKLEME FORM
+# YENİ İŞLEM EKLEME FORM (Üst Alanda Sabit)
 with st.expander("➕ Yeni İşlem Ekle", expanded=True):
     with st.form("new_transaction_form", clear_on_submit=True):
         col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.8, 1.2, 1.0, 1.2, 1.1, 0.8, 0.9, 1.0, 1.0])
@@ -55,12 +55,8 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                 formatted_date = tx_date.strftime("%d/%m/%Y")
                 formatted_time = tx_time.strftime("%H:%M")
 
-                # Uygulama/Banka ismindeki her kelimenin baş harfini Türkçe karakter uyumlu büyütme
                 raw_app = app_platform.strip()
-                if raw_app:
-                    formatted_app = " ".join([word.capitalize() for word in raw_app.split()])
-                else:
-                    formatted_app = "-"
+                formatted_app = " ".join([word.capitalize() for word in raw_app.split()]) if raw_app else "-"
 
                 st.session_state.transactions.append({
                     "Tarih_Obj": tx_date,
@@ -76,7 +72,7 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     "Tutar": quantity * price
                 })
 
-                # 1. Tarih ve Saat önceliğine göre sırala
+                # Tarih ve Saat önceliğine göre sırala
                 st.session_state.transactions.sort(
                     key=lambda x: (
                         x.get("Tarih_Obj", datetime.date.min),
@@ -84,7 +80,6 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     )
                 )
 
-                # 2. Sıralama sonrası Sıra No'ları otomatik güncelle
                 for i, item in enumerate(st.session_state.transactions):
                     item["Sıra"] = i + 1
 
@@ -93,137 +88,211 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
             else:
                 st.warning("Lütfen hisse kodunu girin.")
 
-# İŞLEM GEÇMİŞİ
-st.subheader("📋 İşlem Geçmişi")
+# PORTFÖY HESAPLAMA MOTORU (Gerçekleşmiş Kâr/Zarar Dâhil)
+def calculate_portfolio_data(transactions_list):
+    portfolio = {}
+    for t in transactions_list:
+        symbol = t["Hisse"]
+        if symbol not in portfolio:
+            portfolio[symbol] = {
+                "adet": 0,
+                "toplam_maliyet_brut": 0.0,
+                "toplam_maliyet_net": 0.0,
+                "komisyon_toplam": 0.0,
+                "gerceklesen_kar_brut": 0.0,
+                "gerceklesen_kar_net": 0.0
+            }
 
-if not st.session_state.transactions:
-    st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki formdan ilk işlemini ekleyebilirsin.")
-else:
-    # Başlık Satırı
-    h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
-    h1.markdown("**Sıra**")
-    h2.markdown("**Tarih**")
-    h3.markdown("**Saat**")
-    h4.markdown("**Uygulama**")
-    h5.markdown("**Hisse**")
-    h6.markdown("**İşlem**")
-    h7.markdown("**Adet**")
-    h8.markdown("**Fiyat**")
-    h9.markdown("**Komisyon**")
-    h10.markdown("**Tutar**")
-    h11.markdown("**Sil**")
-    st.divider()
+        qty = t["Adet"]
+        price = t["Fiyat"]
+        comm = t.get("Komisyon", 0.0)
+        portfolio[symbol]["komisyon_toplam"] += comm
 
-    # İşlem Satırları
-    to_delete = None
-    for idx, t in enumerate(st.session_state.transactions):
-        c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
-        c1.write(f"#{idx+1}")
-        c2.write(t.get("Tarih", ""))
-        c3.write(t.get("Saat", "--:--"))
-        c4.write(t.get("Uygulama", "-"))
-        c5.write(f"**{t['Hisse']}**")
-        c6.write(f"🟢 AL" if t['İşlem'] == "AL" else f"🔴 SAT")
-        c7.write(f"{t['Adet']:,}")
-        c8.write(f"{t['Fiyat']:.2f} TL")
-        c9.write(f"{t.get('Komisyon', 0.0):.2f} TL")
-        c10.write(f"{t['Tutar']:.2f} TL")
-        if c11.button("🗑️", key=f"del_{idx}"):
-            to_delete = idx
+        if t["İşlem"] == "AL":
+            portfolio[symbol]["toplam_maliyet_brut"] += (qty * price)
+            portfolio[symbol]["toplam_maliyet_net"] += (qty * price) + comm
+            portfolio[symbol]["adet"] += qty
+        elif t["İşlem"] == "SAT":
+            if portfolio[symbol]["adet"] > 0:
+                avg_brut = portfolio[symbol]["toplam_maliyet_brut"] / portfolio[symbol]["adet"]
+                avg_net = portfolio[symbol]["toplam_maliyet_net"] / portfolio[symbol]["adet"]
 
-    if to_delete is not None:
-        st.session_state.transactions.pop(to_delete)
-        for i, item in enumerate(st.session_state.transactions):
-            item["Sıra"] = i + 1
-        st.rerun()
+                sell_val_brut = qty * price
+                sell_val_net = (qty * price) - comm
+                cogs_brut = qty * avg_brut
+                cogs_net = qty * avg_net
 
-# PORTFÖY ÖZETİ VE CANLI VERİ HESAPLAMA
-st.subheader("📊 Portföy Özetiniz (15 Dakika Gecikmeli Canlı Fiyatlar)")
+                portfolio[symbol]["gerceklesen_kar_brut"] += (sell_val_brut - cogs_brut)
+                portfolio[symbol]["gerceklesen_kar_net"] += (sell_val_net - cogs_net)
 
-portfolio = {}
-for t in st.session_state.transactions:
-    symbol = t["Hisse"]
-    if symbol not in portfolio:
-        portfolio[symbol] = {
-            "adet": 0, 
-            "toplam_maliyet_brut": 0.0, 
-            "toplam_maliyet_net": 0.0, 
-            "komisyon_toplam": 0.0
-        }
+                portfolio[symbol]["toplam_maliyet_brut"] -= cogs_brut
+                portfolio[symbol]["toplam_maliyet_net"] -= cogs_net
+                portfolio[symbol]["adet"] -= qty
+
+    return portfolio
+
+# SEKMELERİ OLUŞTURMA
+unique_stocks = list(dict.fromkeys([t["Hisse"] for t in st.session_state.transactions]))
+tab_list = ["🌐 Genel Portföy"] + [f"📌 {symbol}" for symbol in unique_stocks]
+tabs = st.tabs(tab_list)
+
+# --- SEKME 1: GENEL PORTFÖY ---
+with tabs[0]:
+    st.subheader("📋 Tüm İşlem Geçmişi")
+    if not st.session_state.transactions:
+        st.info("Henüz kayıtlı bir işlem yok.")
+    else:
+        h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
+        h1.markdown("**Sıra**")
+        h2.markdown("**Tarih**")
+        h3.markdown("**Saat**")
+        h4.markdown("**Uygulama**")
+        h5.markdown("**Hisse**")
+        h6.markdown("**İşlem**")
+        h7.markdown("**Adet**")
+        h8.markdown("**Fiyat**")
+        h9.markdown("**Komisyon**")
+        h10.markdown("**Tutar**")
+        h11.markdown("**Sil**")
+        st.divider()
+
+        to_delete = None
+        for idx, t in enumerate(st.session_state.transactions):
+            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
+            c1.write(f"#{idx+1}")
+            c2.write(t.get("Tarih", ""))
+            c3.write(t.get("Saat", "--:--"))
+            c4.write(t.get("Uygulama", "-"))
+            c5.write(f"**{t['Hisse']}**")
+            c6.write(f"🟢 AL" if t['İşlem'] == "AL" else f"🔴 SAT")
+            c7.write(f"{t['Adet']:,}")
+            c8.write(f"{t['Fiyat']:.2f} TL")
+            c9.write(f"{t.get('Komisyon', 0.0):.2f} TL")
+            c10.write(f"{t['Tutar']:.2f} TL")
+            if c11.button("🗑️", key=f"del_all_{idx}"):
+                to_delete = idx
+
+        if to_delete is not None:
+            st.session_state.transactions.pop(to_delete)
+            for i, item in enumerate(st.session_state.transactions):
+                item["Sıra"] = i + 1
+            st.rerun()
+
+    st.subheader("📊 Portföy Özetiniz (15 Dakika Gecikmeli Canlı Fiyatlar)")
+    portfolio = calculate_portfolio_data(st.session_state.transactions)
     
-    qty = t["Adet"]
-    price = t["Fiyat"]
-    comm = t.get("Komisyon", 0.0)
-    portfolio[symbol]["komisyon_toplam"] += comm
+    summary_data = []
+    total_portfolio_val = 0.0
+    total_portfolio_net_cost = 0.0
+    total_portfolio_commission = 0.0
+    total_realized_pnl_net = 0.0
+    total_unrealized_pnl_net = 0.0
 
-    if t["İşlem"] == "AL":
-        portfolio[symbol]["toplam_maliyet_brut"] += (qty * price)
-        portfolio[symbol]["toplam_maliyet_net"] += (qty * price) + comm
-        portfolio[symbol]["adet"] += qty
-    elif t["İşlem"] == "SAT":
-        if portfolio[symbol]["adet"] > 0:
-            avg_brut = portfolio[symbol]["toplam_maliyet_brut"] / portfolio[symbol]["adet"]
-            avg_net = portfolio[symbol]["toplam_maliyet_net"] / portfolio[symbol]["adet"]
-            
-            portfolio[symbol]["toplam_maliyet_brut"] -= (qty * avg_brut)
-            portfolio[symbol]["toplam_maliyet_net"] -= (qty * avg_net)
-            portfolio[symbol]["adet"] -= qty
+    with st.spinner("BIST güncel fiyatları çekiliyor..."):
+        for symbol, data in portfolio.items():
+            total_portfolio_commission += data["komisyon_toplam"]
+            total_realized_pnl_net += data["gerceklesen_kar_net"]
 
-summary_data = []
-total_portfolio_val = 0.0
-total_portfolio_brut_cost = 0.0
-total_portfolio_net_cost = 0.0
-total_portfolio_commission = 0.0
+            if data["adet"] > 0:
+                avg_cost_brut = data["toplam_maliyet_brut"] / data["adet"]
+                avg_cost_net = data["toplam_maliyet_net"] / data["adet"]
 
-with st.spinner("BIST güncel fiyatları çekiliyor..."):
-    for symbol, data in portfolio.items():
-        if data["adet"] > 0:
-            avg_cost_brut = data["toplam_maliyet_brut"] / data["adet"]
-            avg_cost_net = data["toplam_maliyet_net"] / data["adet"]
-            
+                curr_price = get_stock_price(symbol)
+                if curr_price is None:
+                    curr_price = avg_cost_brut
+                    price_str = f"{avg_cost_brut:.2f} TL (Canlı Veri Yok)"
+                else:
+                    price_str = f"{curr_price:.2f} TL"
+
+                total_net_cost = data["toplam_maliyet_net"]
+                total_val = data["adet"] * curr_price
+
+                unrealized_net = total_val - total_net_cost
+                total_unrealized_pnl_net += unrealized_net
+                stock_total_net_pnl = unrealized_net + data["gerceklesen_kar_net"]
+                net_pnl_pct = (stock_total_net_pnl / total_net_cost * 100) if total_net_cost > 0 else 0.0
+
+                total_portfolio_val += total_val
+                total_portfolio_net_cost += total_net_cost
+
+                summary_data.append({
+                    "Hisse": symbol,
+                    "Adet": data["adet"],
+                    "Ort. Maliyet (Net)": f"{avg_cost_net:.2f} TL",
+                    "Güncel Fiyat": price_str,
+                    "Güncel Değer": f"{total_val:.2f} TL",
+                    "Satış Kârı (Net)": f"{data['gerceklesen_kar_net']:+.2f} TL",
+                    "Açık Poz. Kârı": f"{unrealized_net:+.2f} TL",
+                    "Toplam Net Kâr / Zarar": f"{stock_total_net_pnl:+.2f} TL",
+                    "Net Kâr (%)": f"{net_pnl_pct:+.2f}%"
+                })
+
+    if summary_data:
+        st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
+
+        overall_net_pnl = total_unrealized_pnl_net + total_realized_pnl_net
+        overall_net_pct = (overall_net_pnl / total_portfolio_net_cost * 100) if total_portfolio_net_cost > 0 else 0.0
+
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Toplam Portföy Değeri", f"{total_portfolio_val:,.2f} TL")
+        m2.metric("Açık Poz. Net Maliyet", f"{total_portfolio_net_cost:,.2f} TL")
+        m3.metric("Toplam Komisyon", f"{total_portfolio_commission:,.2f} TL")
+        m4.metric("Satış Kârı (Realized)", f"{total_realized_pnl_net:,.2f} TL")
+        m5.metric("Net Kâr / Zarar (Toplam)", f"{overall_net_pnl:,.2f} TL", delta=f"{overall_net_pct:+.2f}%")
+
+# --- HİSSEYE ÖZEL SEKMELER ---
+for i, symbol in enumerate(unique_stocks):
+    with tabs[i + 1]:
+        st.subheader(f"📌 {symbol} Hisse Detayı ve İşlemleri")
+        
+        # Sadece bu hissenin işlemlerini filtrele
+        stock_txs = [t for t in st.session_state.transactions if t["Hisse"] == symbol]
+        stock_portfolio = calculate_portfolio_data(stock_txs).get(symbol, {})
+
+        if stock_portfolio:
+            qty = stock_portfolio["adet"]
+            net_cost = stock_portfolio["toplam_maliyet_net"]
+            realized_net = stock_portfolio["gerceklesen_kar_net"]
+            comm = stock_portfolio["komisyon_toplam"]
+
             curr_price = get_stock_price(symbol)
             if curr_price is None:
-                curr_price = avg_cost_brut
-                price_str = f"{avg_cost_brut:.2f} TL (Canlı Veri Yok)"
-            else:
-                price_str = f"{curr_price:.2f} TL"
+                curr_price = (net_cost / qty) if qty > 0 else 0.0
 
-            total_brut_cost = data["toplam_maliyet_brut"]
-            total_net_cost = data["toplam_maliyet_net"]
-            total_val = data["adet"] * curr_price
-            
-            pnl_brut = total_val - total_brut_cost
-            pnl_net = total_val - total_net_cost
-            pnl_net_pct = (pnl_net / total_net_cost * 100) if total_net_cost > 0 else 0.0
+            curr_val = qty * curr_price
+            unrealized_net = (curr_val - net_cost) if qty > 0 else 0.0
+            total_stock_pnl = unrealized_net + realized_net
 
-            total_portfolio_val += total_val
-            total_portfolio_brut_cost += total_brut_cost
-            total_portfolio_net_cost += total_net_cost
-            total_portfolio_commission += data["komisyon_toplam"]
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.metric("Mevcut Adet", f"{qty:,}")
+            k2.metric("Güncel Fiyat", f"{curr_price:.2f} TL")
+            k3.metric("Satış Kârı (Net)", f"{realized_net:+.2f} TL")
+            k4.metric("Açık Pozisyon Kârı", f"{unrealized_net:+.2f} TL")
+            k5.metric("Toplam Net Kâr / Zarar", f"{total_stock_pnl:+.2f} TL")
 
-            summary_data.append({
-                "Hisse": symbol,
-                "Adet": data["adet"],
-                "Ort. Maliyet (Brüt)": f"{avg_cost_brut:.2f} TL",
-                "Ort. Maliyet (Net)": f"{avg_cost_net:.2f} TL",
-                "Güncel Fiyat": price_str,
-                "Toplam Komisyon": f"{data['komisyon_toplam']:.2f} TL",
-                "Güncel Değer": f"{total_val:.2f} TL",
-                "Brüt Kâr / Zarar": f"{pnl_brut:+.2f} TL",
-                "Net Kâr / Zarar": f"{pnl_net:+.2f} TL",
-                "Net Kâr (%)": f"{pnl_net_pct:+.2f}%"
-            })
+        st.divider()
+        st.markdown(f"### 📋 {symbol} İşlem Geçmişi")
+        
+        h1, h2, h3, h4, h5, h6, h7, h8, h9 = st.columns([0.8, 1.1, 0.9, 1.2, 0.8, 0.9, 1.0, 1.0, 1.1])
+        h1.markdown("**Sıra**")
+        h2.markdown("**Tarih**")
+        h3.markdown("**Saat**")
+        h4.markdown("**Uygulama**")
+        h5.markdown("**İşlem**")
+        h6.markdown("**Adet**")
+        h7.markdown("**Fiyat**")
+        h8.markdown("**Komisyon**")
+        h9.markdown("**Tutar**")
+        st.divider()
 
-if summary_data:
-    st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
-    
-    total_pnl_brut = total_portfolio_val - total_portfolio_brut_cost
-    total_pnl_net = total_portfolio_val - total_portfolio_net_cost
-    total_pnl_net_pct = (total_pnl_net / total_portfolio_net_cost * 100) if total_portfolio_net_cost > 0 else 0.0
-
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Toplam Portföy Değeri", f"{total_portfolio_val:,.2f} TL")
-    m2.metric("Toplam Net Maliyet", f"{total_portfolio_net_cost:,.2f} TL")
-    m3.metric("Toplam Komisyon", f"{total_portfolio_commission:,.2f} TL")
-    m4.metric("Brüt Kâr / Zarar", f"{total_pnl_brut:,.2f} TL")
-    m5.metric("Net Kâr / Zarar (Komisyonlu)", f"{total_pnl_net:,.2f} TL", delta=f"{total_pnl_net_pct:+.2f}%")
+        for s_idx, t in enumerate(stock_txs):
+            c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([0.8, 1.1, 0.9, 1.2, 0.8, 0.9, 1.0, 1.0, 1.1])
+            c1.write(f"#{t.get('Sıra', s_idx+1)}")
+            c2.write(t.get("Tarih", ""))
+            c3.write(t.get("Saat", "--:--"))
+            c4.write(t.get("Uygulama", "-"))
+            c5.write(f"🟢 AL" if t['İşlem'] == "AL" else f"🔴 SAT")
+            c6.write(f"{t['Adet']:,}")
+            c7.write(f"{t['Fiyat']:.2f} TL")
+            c8.write(f"{t.get('Komisyon', 0.0):.2f} TL")
+            c9.write(f"{t['Tutar']:.2f} TL")
