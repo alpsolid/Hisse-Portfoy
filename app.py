@@ -60,7 +60,6 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     "Saat_Obj": tx_time,
                     "Tarih": formatted_date,
                     "Saat": formatted_time,
-                    "Sıra": tx_order,
                     "Uygulama": app_platform.strip() if app_platform else "-",
                     "Hisse": clean_ticker,
                     "İşlem": action,
@@ -69,15 +68,20 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     "Komisyon": commission,
                     "Tutar": quantity * price
                 })
-                # Tarih ve Saat önceliğine göre otomatik sıralama (Tarih -> Saat -> Sıra No)
+
+                # 1. Tarih ve Saat önceliğine göre sırala
                 st.session_state.transactions.sort(
                     key=lambda x: (
                         x.get("Tarih_Obj", datetime.date.min),
-                        x.get("Saat_Obj", datetime.time.min),
-                        x.get("Sıra", 0)
+                        x.get("Saat_Obj", datetime.time.min)
                     )
                 )
-                st.success(f"#{tx_order} - {clean_ticker} işlemi ({formatted_date} {formatted_time}) başarıyla eklendi!")
+
+                # 2. Sıralama sonrası Sıra No'ları 1, 2, 3... diye otomatik güncelle
+                for i, item in enumerate(st.session_state.transactions):
+                    item["Sıra"] = i + 1
+
+                st.success(f"{clean_ticker} işlemi ({formatted_date} {formatted_time}) başarıyla eklendi ve sıralandı!")
                 st.rerun()
             else:
                 st.warning("Lütfen hisse kodunu girin.")
@@ -107,7 +111,7 @@ else:
     to_delete = None
     for idx, t in enumerate(st.session_state.transactions):
         c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
-        c1.write(f"#{t.get('Sıra', idx+1)}")
+        c1.write(f"#{idx+1}")
         c2.write(t.get("Tarih", ""))
         c3.write(t.get("Saat", "--:--"))
         c4.write(t.get("Uygulama", "-"))
@@ -122,6 +126,9 @@ else:
 
     if to_delete is not None:
         st.session_state.transactions.pop(to_delete)
+        # Silme sonrası Sıra No'ları tekrar 1, 2, 3... olarak güncelle
+        for i, item in enumerate(st.session_state.transactions):
+            item["Sıra"] = i + 1
         st.rerun()
 
 # PORTFÖY ÖZETİ VE CANLI VERİ HESAPLAMA
