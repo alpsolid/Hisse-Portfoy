@@ -1,113 +1,141 @@
 import streamlit as st
 import pandas as pd
-import json
-import os
-from datetime import datetime
+import yfinance as yf
+import datetime
 
-# Mobil ekran düzeni ayarı
-st.set_page_config(page_title="Hisse Portföyüm", page_icon="📈", layout="wide")
-
-DATA_FILE = "portfoy_verileri.json"
-
-def verileri_yukle():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def verileri_kaydet(veriler):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(veriler, f, ensure_ascii=False, indent=4)
-
-islemler = verileri_yukle()
+st.set_page_config(page_title="BIST Portföy Takibi", layout="wide")
 
 st.title("📈 BIST Mobil Portföy Takibi")
 
-# --- MOBİL UYUMLU İŞLEM EKLEME FORMU ---
+# İşlem geçmişini hafızada tutma
+if "transactions" not in st.session_state:
+    st.session_state.transactions = []
+
+# Yahoo Finance üzerinden BIST fiyatı çekme fonksiyonu
+@st.cache_data(ttl=300)
+def get_stock_price(ticker):
+    try:
+        full_ticker = f"{ticker.upper().strip()}.IS"
+        stock = yf.Ticker(full_ticker)
+        history = stock.history(period="1d")
+        if not history.empty:
+            return float(history["Close"].iloc[-1])
+    except Exception:
+        pass
+    return None
+
+# YENİ İŞLEM EKLEME
 with st.expander("➕ Yeni İşlem Ekle", expanded=False):
-    with st.form("islem_formu"):
-        col1, col2 = st.columns(2)
-        with col1:
-            uygulama = st.text_input("İşlem Yapılan Uygulama", placeholder="Örn: İş Bankası, Midas")
-            hisse = st.text_input("Hisse Kodu (Adı)", placeholder="Örn: MOGAN").upper()
-            islem_tipi = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
-            birim_fiyat = st.number_input("Gerçekleşen Birim Fiyat (TL)", min_value=0.01, step=0.01, format="%.2f")
-            lot = st.number_input("İşlem Adedi (Lot)", min_value=1, step=1)
-        
-        with col2:
-            tarih = st.date_input("İşlem Tarihi", datetime.now()).strftime("%Y-%m-%d")
-            guncel_fiyat = st.number_input("Hisse Güncel Birim Fiyatı (TL)", min_value=0.0, step=0.01, format="%.2f")
-            komisyon = st.number_input("Komisyon Ücreti (TL)", min_value=0.0, step=0.1, format="%.2f")
-            islem_no = st.text_input("Bankadaki İşlem Numarası", placeholder="Opsiyonel")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        tx_date = st.date_input(
+            "İşlem Tarihi", 
+            value=datetime.date.today(), 
+            format="DD/MM/YYYY"
+        )
+    with col2:
+        ticker = st.text_input("Hisse Kodu (Örn: THYAO)").upper().strip()
+    with col3:
+        action = st.selectbox("İşlem Tipi", ["AL", "SAT"])
+    with col4:
+        quantity = st.number_input("Adet", min_value=1, value=100)
+    with col5:
+        price = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=10.0, step=0.1)
 
-        kaydet = st.form_submit_button("İşlemi Kaydet")
+    if st.button("İşlemi Kaydet"):
+        if ticker:
+            formatted_date = tx_date.strftime("%d/%m/%Y")
+            st.session_state.transactions.append({
+                "Tarih": formatted_date,
+                "Hisse": ticker,
+                "İşlem": action,
+                "Adet": quantity,
+                "Fiyat": price,
+                "Tutar": quantity * price
+            })
+            st.success(f"{ticker} işlemi başarıyla eklendi!")
+            st.rerun()
+        else:
+            st.warning("Lütfen hisse kodunu girin.")
 
-        if kaydet and hisse:
-            yeni_islem = {
-                "uygulama": uygulama,
-                "tarih": tarih,
-                "hisse": hisse,
-                "islem_tipi": islem_tipi,
-                "guncel_fiyat": guncel_fiyat,
-                "alis_fiyati": birim_fiyat if islem_tipi == "ALIŞ" else 0.0,
-                "satis_fiyati": birim_fiyat if islem_tipi == "SATIŞ" else 0.0,
-                "lot": lot,
-                "komisyon": komisyon,
-                "islem_no": islem_no
-            }
-            islemler.append(yeni_islem)
-            verileri_kaydet(islemler)
-            st.success(f"{hisse} işlemi başarıyla kaydedildi!")
+# İŞLEM GEÇMİŞİ VE SİLME
+st.subheader("📋 İşlem Geçmişi")
+if not st.session_state.transactions:
+    st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki 'Yeni İşlem Ekle' butonundan ilk işlemini girebilirsin.")
+else:
+    df_trans = pd.DataFrame(st.session_state.transactions)
+    
+    col_list, col_del = st.columns([3, 1])
+    with col_list:
+        st.dataframe(df_trans, use_container_width=True)
+    with col_del:
+        st.write("**🗑️ Yanlış İşlemi Sil**")
+        options = [f"{i+1}. {t.get('Tarih', '')} - {t['Hisse']} ({t['İşlem']} - {t['Adet']} Adet)" for i, t in enumerate(st.session_state.transactions)]
+        to_delete_idx = st.selectbox("Silinecek İşlemi Seç", range(len(options)), format_func=lambda x: options[x])
+        if st.button("Seçilen İşlemi Sil", type="primary"):
+            st.session_state.transactions.pop(to_delete_idx)
+            st.success("İşlem silindi!")
             st.rerun()
 
-# --- HESAPLAMA MANTIĞI VE ÖZET SAYFALARI ---
-if islemler:
-    df = pd.DataFrame(islemler)
+# PORTFÖY ÖZETİ VE CANLI VERİ HESAPLAMA
+st.subheader("📊 Portföy Özetiniz (15 Dakika Gecikmeli Canlı Fiyatlar)")
     
-    # Tüm Hisse Listesi
-    hisseler = sorted(list(set(df['hisse'])))
+portfolio = {}
+for t in st.session_state.transactions:
+    symbol = t["Hisse"]
+    if symbol not in portfolio:
+        portfolio[symbol] = {"adet": 0, "maliyet_toplam": 0.0}
     
-    # SEKMELER (Görselindeki sekme yapısının birebir aynısı)
-    sekmeler = st.tabs(["📊 Tüm Hisse İşlemleri"] + [f"📌 {h}" for h in hisseler])
-    
-    # 1. TÜM HİSSE İŞLEMLERİ SEKMESİ
-    with sekmeler[0]:
-        st.subheader("Tüm İşlem Kayıtları")
-        
-        # Genel özet kartları
-        toplam_islem_sayisi = len(df)
-        st.metric("Toplam Kayıtlı İşlem", toplam_islem_sayisi)
-        
-        # Tablo gösterimi
-        st.dataframe(df, use_container_width=True)
+    if t["İşlem"] == "AL":
+        portfolio[symbol]["adet"] += t["Adet"]
+        portfolio[symbol]["maliyet_toplam"] += t["Adet"] * t["Fiyat"]
+    elif t["İşlem"] == "SAT":
+        portfolio[symbol]["adet"] -= t["Adet"]
+        portfolio[symbol]["maliyet_toplam"] -= t["Adet"] * t["Fiyat"]
 
-    # 2. HİSSE BAZLI ÖZEL SEKMELER
-    for i, h_kod in enumerate(hisseler):
-        with sekmeler[i+1]:
-            h_df = df[df['hisse'] == h_kod].copy()
+summary_data = []
+total_portfolio_val = 0.0
+total_portfolio_cost = 0.0
+
+with st.spinner("BIST güncel fiyatları çekiliyor..."):
+    for symbol, data in portfolio.items():
+        if data["adet"] > 0:
+            avg_cost = data["maliyet_toplam"] / data["adet"]
+            curr_price = get_stock_price(symbol)
             
-            # Stok / Maliyet / Kâr Hesaplama
-            toplam_alis_lot = h_df[h_df['islem_tipi'] == 'ALIŞ']['lot'].sum()
-            toplam_satis_lot = h_df[h_df['islem_tipi'] == 'SATIŞ']['lot'].sum()
-            kalan_lot = toplam_alis_lot - toplam_satis_lot
-            
-            toplam_alis_tutar = (h_df[h_df['islem_tipi'] == 'ALIŞ']['alis_fiyati'] * h_df[h_df['islem_tipi'] == 'ALIŞ']['lot']).sum()
-            ort_alis = (toplam_alis_tutar / toplam_alis_lot) if toplam_alis_lot > 0 else 0.0
-            
-            toplam_satis_tutar = (h_df[h_df['islem_tipi'] == 'SATIŞ']['satis_fiyati'] * h_df[h_df['islem_tipi'] == 'SATIŞ']['lot']).sum()
-            ort_satis = (toplam_satis_tutar / toplam_satis_lot) if toplam_satis_lot > 0 else 0.0
-            
-            # Realize Kar/Zarar
-            realize_kar = toplam_satis_tutar - (toplam_satis_lot * ort_alis) - h_df['komisyon'].sum()
-            
-            # Kart Görünümleri (Mobil Uyumlu)
-            col_a, col_b, col_c = st.columns(3)
-            col_a.metric("Eldeki Kalan Lot", f"{kalan_lot} Lot")
-            col_b.metric("Ortalama Alış Fiyatı", f"{ort_alis:.2f} TL")
-            col_c.metric("Realize Kâr/Zarar", f"{realize_kar:.2f} TL", delta_color="normal")
-            
-            st.divider()
-            st.write(f"**{h_kod} İşlem Geçmişi:**")
-            st.dataframe(h_df, use_container_width=True)
-else:
-    st.info("Henüz kayıtlı bir işlem yok. Yukarıdaki 'Yeni İşlem Ekle' butonundan ilk işlemini girebilirsin.")
+            if curr_price is None:
+                curr_price = avg_cost
+                price_str = f"{avg_cost:.2f} TL (Canlı Veri Alınamadı)"
+            else:
+                price_str = f"{curr_price:.2f} TL"
+
+            total_cost = data["adet"] * avg_cost
+            total_val = data["adet"] * curr_price
+            pnl = total_val - total_cost
+            pnl_pct = (pnl / total_cost * 100) if total_cost > 0 else 0.0
+
+            total_portfolio_val += total_val
+            total_portfolio_cost += total_cost
+
+            summary_data.append({
+                "Hisse": symbol,
+                "Adet": data["adet"],
+                "Ort. Maliyet": f"{avg_cost:.2f} TL",
+                "Güncel Fiyat": price_str,
+                "Toplam Maliyet": f"{total_cost:.2f} TL",
+                "Güncel Değer": f"{total_val:.2f} TL",
+                "Kâr / Zarar": f"{pnl:+.2f} TL",
+                "Kâr / Zarar (%)": f"%{pnl_pct:+.2f}"
+            })
+
+if summary_data:
+    st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
+    
+    # Özet Göstergeler (Metrics)
+    total_pnl = total_portfolio_val - total_portfolio_cost
+    total_pnl_pct = (total_pnl / total_portfolio_cost * 100) if total_portfolio_cost > 0 else 0.0
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Toplam Portföy Değeri", f"{total_portfolio_val:,.2f} TL")
+    m2.metric("Toplam Maliyet", f"{total_portfolio_cost:,.2f} TL")
+    m3.metric("Net Kâr / Zarar", f"{total_pnl:,.2f} TL", delta=f"%{total_pnl_pct:.2f}")
