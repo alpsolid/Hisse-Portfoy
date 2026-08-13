@@ -33,7 +33,8 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
         with col2:
             tx_date = st.date_input("İşlem Tarihi", value=datetime.date.today(), format="DD/MM/YYYY")
         with col3:
-            tx_time = st.time_input("Saat", value=datetime.datetime.now().time())
+            # Metin girdisine çevrildi: Elle 14:00 yazabilirsin, boş bırakırsan o anki saati alır
+            tx_time_str = st.text_input("Saat", placeholder="Örn: 14:00")
         with col4:
             app_platform = st.text_input("Uygulama / Banka", placeholder="Midas, İş Cep vb.")
         with col5:
@@ -53,14 +54,26 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
             clean_ticker = ticker.strip().upper()
             if clean_ticker:
                 formatted_date = tx_date.strftime("%d/%m/%Y")
-                formatted_time = tx_time.strftime("%H:%M")
+
+                # Saat İşleme ve Formatlama Mantığı
+                user_time = tx_time_str.strip().replace(".", ":")
+                if user_time:
+                    formatted_time = user_time
+                    try:
+                        time_obj = datetime.datetime.strptime(user_time, "%H:%M").time()
+                    except ValueError:
+                        time_obj = datetime.datetime.now().time()
+                else:
+                    now_dt = datetime.datetime.now()
+                    formatted_time = now_dt.strftime("%H:%M")
+                    time_obj = now_dt.time()
 
                 raw_app = app_platform.strip()
                 formatted_app = " ".join([word.capitalize() for word in raw_app.split()]) if raw_app else "-"
 
                 st.session_state.transactions.append({
                     "Tarih_Obj": tx_date,
-                    "Saat_Obj": tx_time,
+                    "Saat_Obj": time_obj,
                     "Tarih": formatted_date,
                     "Saat": formatted_time,
                     "Uygulama": formatted_app,
@@ -245,7 +258,6 @@ for i, symbol in enumerate(unique_stocks):
     with tabs[i + 1]:
         st.subheader(f"📌 {symbol} Hisse Detayı ve İşlemleri")
         
-        # Sadece bu hissenin işlemlerini filtrele
         stock_txs = [t for t in st.session_state.transactions if t["Hisse"] == symbol]
         stock_portfolio = calculate_portfolio_data(stock_txs).get(symbol, {})
 
