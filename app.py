@@ -55,12 +55,19 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                 formatted_date = tx_date.strftime("%d/%m/%Y")
                 formatted_time = tx_time.strftime("%H:%M")
 
+                # Uygulama/Banka ismindeki her kelimenin baş harfini Türkçe karakter uyumlu büyütme
+                raw_app = app_platform.strip()
+                if raw_app:
+                    formatted_app = " ".join([word.capitalize() for word in raw_app.split()])
+                else:
+                    formatted_app = "-"
+
                 st.session_state.transactions.append({
                     "Tarih_Obj": tx_date,
                     "Saat_Obj": tx_time,
                     "Tarih": formatted_date,
                     "Saat": formatted_time,
-                    "Uygulama": app_platform.strip() if app_platform else "-",
+                    "Uygulama": formatted_app,
                     "Hisse": clean_ticker,
                     "İşlem": action,
                     "Adet": quantity,
@@ -77,11 +84,11 @@ with st.expander("➕ Yeni İşlem Ekle", expanded=True):
                     )
                 )
 
-                # 2. Sıralama sonrası Sıra No'ları 1, 2, 3... diye otomatik güncelle
+                # 2. Sıralama sonrası Sıra No'ları otomatik güncelle
                 for i, item in enumerate(st.session_state.transactions):
                     item["Sıra"] = i + 1
 
-                st.success(f"{clean_ticker} işlemi ({formatted_date} {formatted_time}) başarıyla eklendi ve sıralandı!")
+                st.success(f"{clean_ticker} işlemi ({formatted_date} {formatted_time}) başarıyla eklendi!")
                 st.rerun()
             else:
                 st.warning("Lütfen hisse kodunu girin.")
@@ -107,7 +114,7 @@ else:
     h11.markdown("**Sil**")
     st.divider()
 
-    # İşlem Satırları ve Çöp Kutusu
+    # İşlem Satırları
     to_delete = None
     for idx, t in enumerate(st.session_state.transactions):
         c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11 = st.columns([0.6, 1.0, 0.8, 1.1, 0.9, 0.7, 0.8, 0.9, 0.9, 1.0, 0.5])
@@ -126,7 +133,6 @@ else:
 
     if to_delete is not None:
         st.session_state.transactions.pop(to_delete)
-        # Silme sonrası Sıra No'ları tekrar 1, 2, 3... olarak güncelle
         for i, item in enumerate(st.session_state.transactions):
             item["Sıra"] = i + 1
         st.rerun()
@@ -138,41 +144,52 @@ portfolio = {}
 for t in st.session_state.transactions:
     symbol = t["Hisse"]
     if symbol not in portfolio:
-        portfolio[symbol] = {"adet": 0, "maliyet_brut": 0.0, "komisyon_toplam": 0.0}
+        portfolio[symbol] = {
+            "adet": 0, 
+            "toplam_maliyet_brut": 0.0, 
+            "toplam_maliyet_net": 0.0, 
+            "komisyon_toplam": 0.0
+        }
     
+    qty = t["Adet"]
+    price = t["Fiyat"]
     comm = t.get("Komisyon", 0.0)
-    
+    portfolio[symbol]["komisyon_toplam"] += comm
+
     if t["İşlem"] == "AL":
-        portfolio[symbol]["adet"] += t["Adet"]
-        portfolio[symbol]["maliyet_brut"] += t["Adet"] * t["Fiyat"]
-        portfolio[symbol]["komisyon_toplam"] += comm
+        portfolio[symbol]["toplam_maliyet_brut"] += (qty * price)
+        portfolio[symbol]["toplam_maliyet_net"] += (qty * price) + comm
+        portfolio[symbol]["adet"] += qty
     elif t["İşlem"] == "SAT":
-        portfolio[symbol]["adet"] -= t["Adet"]
-        portfolio[symbol]["maliyet_brut"] -= t["Adet"] * t["Fiyat"]
-        portfolio[symbol]["komisyon_toplam"] += comm
+        if portfolio[symbol]["adet"] > 0:
+            avg_brut = portfolio[symbol]["toplam_maliyet_brut"] / portfolio[symbol]["adet"]
+            avg_net = portfolio[symbol]["toplam_maliyet_net"] / portfolio[symbol]["adet"]
+            
+            portfolio[symbol]["toplam_maliyet_brut"] -= (qty * avg_brut)
+            portfolio[symbol]["toplam_maliyet_net"] -= (qty * avg_net)
+            portfolio[symbol]["adet"] -= qty
 
 summary_data = []
 total_portfolio_val = 0.0
 total_portfolio_brut_cost = 0.0
+total_portfolio_net_cost = 0.0
 total_portfolio_commission = 0.0
 
 with st.spinner("BIST güncel fiyatları çekiliyor..."):
     for symbol, data in portfolio.items():
         if data["adet"] > 0:
-            avg_cost_brut = data["maliyet_brut"] / data["adet"]
-            maliyet_net = data["maliyet_brut"] + data["komisyon_toplam"]
-            avg_cost_net = maliyet_net / data["adet"]
+            avg_cost_brut = data["toplam_maliyet_brut"] / data["adet"]
+            avg_cost_net = data["toplam_maliyet_net"] / data["adet"]
             
             curr_price = get_stock_price(symbol)
-            
             if curr_price is None:
                 curr_price = avg_cost_brut
-                price_str = f"{avg_cost_brut:.2f} TL (Canlı Veri Alınamadı)"
+                price_str = f"{avg_cost_brut:.2f} TL (Canlı Veri Yok)"
             else:
                 price_str = f"{curr_price:.2f} TL"
 
-            total_brut_cost = data["maliyet_brut"]
-            total_net_cost = maliyet_net
+            total_brut_cost = data["toplam_maliyet_brut"]
+            total_net_cost = data["toplam_maliyet_net"]
             total_val = data["adet"] * curr_price
             
             pnl_brut = total_val - total_brut_cost
@@ -181,6 +198,7 @@ with st.spinner("BIST güncel fiyatları çekiliyor..."):
 
             total_portfolio_val += total_val
             total_portfolio_brut_cost += total_brut_cost
+            total_portfolio_net_cost += total_net_cost
             total_portfolio_commission += data["komisyon_toplam"]
 
             summary_data.append({
@@ -193,20 +211,19 @@ with st.spinner("BIST güncel fiyatları çekiliyor..."):
                 "Güncel Değer": f"{total_val:.2f} TL",
                 "Brüt Kâr / Zarar": f"{pnl_brut:+.2f} TL",
                 "Net Kâr / Zarar": f"{pnl_net:+.2f} TL",
-                "Net Kâr (%)": f"%{pnl_net_pct:+.2f}"
+                "Net Kâr (%)": f"{pnl_net_pct:+.2f}%"
             })
 
 if summary_data:
     st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
     
-    total_net_cost = total_portfolio_brut_cost + total_portfolio_commission
     total_pnl_brut = total_portfolio_val - total_portfolio_brut_cost
-    total_pnl_net = total_portfolio_val - total_net_cost
-    total_pnl_net_pct = (total_pnl_net / total_net_cost * 100) if total_net_cost > 0 else 0.0
+    total_pnl_net = total_portfolio_val - total_portfolio_net_cost
+    total_pnl_net_pct = (total_pnl_net / total_portfolio_net_cost * 100) if total_portfolio_net_cost > 0 else 0.0
 
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Toplam Portföy Değeri", f"{total_portfolio_val:,.2f} TL")
-    m2.metric("Toplam Net Maliyet", f"{total_net_cost:,.2f} TL")
+    m2.metric("Toplam Net Maliyet", f"{total_portfolio_net_cost:,.2f} TL")
     m3.metric("Toplam Komisyon", f"{total_portfolio_commission:,.2f} TL")
     m4.metric("Brüt Kâr / Zarar", f"{total_pnl_brut:,.2f} TL")
-    m5.metric("Net Kâr / Zarar (Komisyonlu)", f"{total_pnl_net:,.2f} TL", delta=f"%{total_pnl_net_pct:.2f}")
+    m5.metric("Net Kâr / Zarar (Komisyonlu)", f"{total_pnl_net:,.2f} TL", delta=f"{total_pnl_net_pct:+.2f}%")
